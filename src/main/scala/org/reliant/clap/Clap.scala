@@ -3,7 +3,7 @@ package org.reliant.clap
 import scala.collection
 import collection.mutable.HashSet
 
-class OptionSpec {
+class OptionSpec (val name: String) {
   private var short: Option[String] = None
   private var long: Option[String] = None
   private var meta: Option[String] = None
@@ -26,6 +26,10 @@ class OptionSpec {
   def matches(target: String) = List(short, long) exists {_ exists (_ equals target)}
 }
 
+class ClapException extends Exception
+
+class BadOptionException extends ClapException
+
 class Clap {
 
   private val options = new HashSet[OptionSpec]()
@@ -37,11 +41,16 @@ class Clap {
   type Options = List[OptionSpec]
   type Args = List[String]
 
-  private def parseLongOpt(elem: String): Option[String] = {
-    if (elem contains '=')
-      val name :: value = elem split '=' toList
+  private def parseLongOpt(elem: String): (String, Option[String]) =
+    elem count (_ == '=') match {
+      case 0 => (elem, None)
+      case 1 => {
+        val name :: value :: Nil = elem split '=' toList
+        (name, Some(value))
+      }
+      case _ => throw new BadOptionException
+    }
 
-  }
   def parse(line: String) = {
     def parseElem(elements: List[String]): (Options, Args) = elements match {
       case head :: tail => head match {
@@ -60,6 +69,6 @@ class Clap {
 }
 
 object Main extends Application {
-  val opt = new OptionSpec setShort "d" setLong "debug"
+  val opt = new OptionSpec("debug") setShort "d" setLong "debug"
   println(opt matches "d")
 }
