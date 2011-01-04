@@ -2,11 +2,18 @@ package org.reliant.clap
 
 abstract class OptionSpec {
   private var argument: Option[String] = None
+  private var present = false
+
   val argRequired = false
+
   def setArg(arg: String) =
     if (argRequired) argument = Some(arg) else throw new NoArgumentSupportException
+
   def getArg() = if (argRequired) argument else throw new NoArgumentSupportException
+
   def parse(elems: List[String]): (Boolean, List[String]) = (false, Nil)
+
+  def setPresent(_present: Boolean) = present = _present
 }
 
 abstract class PosixOption(val name: String) extends OptionSpec
@@ -16,9 +23,10 @@ trait Short extends OptionSpec {
 
   abstract override def parse(args: List[String]) = {
     val (success, rest) = _parse(args)
-    if (success)
+    if (success) {
+      this setPresent true
       (success, rest)
-    else
+    } else
       super.parse(args)
   }
 
@@ -43,6 +51,17 @@ trait Short extends OptionSpec {
 
 trait Long extends OptionSpec {
   val long: String
+
+  abstract override def parse(args: List[String]) = {
+    val (success, rest) = _parse(args)
+    if (success) {
+      this setPresent true
+      (success, rest)
+    } else
+      super.parse(args)
+  }
+
+  private def _parse(args: List[String]) = (false, Nil)
 }
 
 trait Argument extends OptionSpec {
@@ -87,9 +106,11 @@ class Clap {
 
 }
 
+trait ShortLong extends Short with Long
+
 object Main extends Application {
 
-  val test = new PosixOption("port") with Short with Long {
+  val test = new PosixOption("port") with ShortLong {
     val short = "p"
     val long = "port"
   }
