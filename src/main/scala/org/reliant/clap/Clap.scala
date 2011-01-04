@@ -1,111 +1,98 @@
 package org.reliant.clap
 
-import scala.collection
-import collection.mutable.HashSet
-
-class OptionSpec (val name: String) {
-  private var short: Option[String] = None
-  private var long: Option[String] = None
-  private var meta: Option[String] = None
-
-  def setShort(_short: String) = {
-    short = Some(_short)
-    this
-  }
-
-  def setLong(_long: String) = {
-    long = Some(_long)
-    this
-  }
-
-  def setMeta(_meta: String) = {
-    meta = Some(_meta)
-    this
-  }
-
-  def matches(target: String) = List(short, long) exists {_ exists (_ equals target)}
+abstract class OptionSpec {
+  private var argument: Option[String] = None
+  val argRequired = false
+  def setArg(arg: String) =
+    if (argRequired) argument = Some(arg) else throw new NoArgumentSupportException
+  def getArg() = if (argRequired) argument else throw new NoArgumentSupportException
+  def parse(elems: List[String]): (Boolean, List[String]) = (false, Nil)
 }
 
-abstract class OptionSpecification {
-  def getDefinedOptions(): List[String] = Nil
-}
+abstract class PosixOption(val name: String) extends OptionSpec
 
-abstract class PosixOption(val name: String) extends OptionSpecification
-
-trait ShortOpt extends OptionSpecification {
+trait Short extends OptionSpec {
   val short: String
 
-  abstract override def getDefinedOptions() = short :: super.getDefinedOptions
+  abstract override def parse(args: List[String]) = {
+    val (success, rest) = _parse(args)
+    if (success)
+      (success, rest)
+    else
+      super.parse(args)
+  }
+
+  private def matches(arg: String) =
+    (arg startsWith "-") && (short equals (arg drop 1))
+
+  private def _parse(args: List[String]) =
+    if (argRequired)
+      (parseWithArg(args take 2), args drop 2)
+    else
+      (this matches (args head), args drop 1)
+
+  private def parseWithArg(args: List[String]) = args match {
+    case option :: value :: Nil =>
+      if (this matches option) {
+        this setArg value
+        true
+      } else false
+    case _ => false
+  }
 }
 
-trait LongOpt extends OptionSpecification {
+trait Long extends OptionSpec {
   val long: String
+}
 
-  abstract override def getDefinedOptions() = long :: super.getDefinedOptions
+trait Argument extends OptionSpec {
+  override val argRequired = true
 }
 
 class ClapException extends Exception
 
 class BadOptionException extends ClapException
 
+class BadOptionFormatException extends ClapException
+
 class NoOptionValueException extends ClapException
 
-object OptionHelpers {
+class NoArgumentSupportException extends ClapException
 
-  def isLong(opt: String) = opt startsWith "--"
+class NoOptionMatchException extends ClapException
 
-  def isShort(opt: String) = !isLong(opt) && (opt startsWith "-")
+class Clap {
 
-  def hasValue(opt: String) =
+  private def isLong(opt: String) = opt startsWith "--"
+
+  private def isShort(opt: String) = !isLong(opt) && (opt startsWith "-")
+
+  private def hasValue(opt: String) =
     isLong(opt) && ((opt count (_ == '=')) == 1) && !(opt endsWith "=")
 
-  def getValue(opt: String) =
+  private def getValue(opt: String) =
     if (hasValue(opt)) {
       val _ :: value :: Nil = opt split '=' toList;
       Some(value)
     }
     else
       None
-}
-
-class Clap {
-
-  private val options = new HashSet[OptionSpec]()
-
-  def addOption(opt: OptionSpec) {
-    options += opt
-  }
-
-  type Options = List[OptionSpec]
-  type Args = List[String]
 
   private def parseLongOpt(elem: String): (String, Option[String]) =
     elem count (_ == '=') match {
       case 0 => (elem, None)
-      case 1 => (elem, OptionHelpers.getValue(elem))
+      case 1 => (elem, getValue(elem))
       case _ => throw new BadOptionException
     }
 
-  def parse(line: String) = {
-    def parseElems(elements: List[String], opts: Options, args: Args): (Options, Args) = elements match {
-      case Nil => (opts, args)
-      case head :: tail => options find {_.matches(head)} match {
-        case Some(option) => parseElems(tail, option :: opts, args)
-        case _ => parseElems(tail, opts, args)
-      }
-    }
-    parseElems(line split ' ' toList, Nil, Nil)
-  }
 }
 
 object Main extends Application {
-  val opt = new OptionSpec("debug") setShort "d" setLong "debug"
-  println(opt matches "d")
 
-  val test = new PosixOption("port") with ShortOpt with LongOpt {
+  val test = new PosixOption("port") with Short with Long {
     val short = "p"
     val long = "port"
   }
 
-  test getDefinedOptions() map println
+  test parse "--port" :: Nil
 }
